@@ -1,0 +1,63 @@
+name: Publish reviewed SecureDevice metadata
+on:
+  workflow_dispatch:
+    inputs:
+      approval_pr:
+        description: Metadata-only PR merged to main by spekita
+        required: true
+        type: string
+      approved_head_commit:
+        description: Full tested metadata PR head SHA
+        required: true
+        type: string
+      reviewed_commit:
+        description: Full current main merge SHA
+        required: true
+        type: string
+      owner_attestation:
+        description: PUBLISH PR#<number> HEAD <head> MERGE <merge> TAG <tag> SHA256 <apk hash>
+        required: true
+        type: string
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  actions: read
+concurrency:
+  group: securedevice-metadata-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'spekita-general-traders/SecureDevice-Releases' && github.ref == 'refs/heads/main' && github.actor == 'spekita' && github.triggering_actor == 'spekita'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: Production
+    env:
+      APPROVAL_PR: ${{ inputs.approval_pr }}
+      APPROVED_HEAD_COMMIT: ${{ inputs.approved_head_commit }}
+      REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+      OWNER_ATTESTATION: ${{ inputs.owner_attestation }}
+      GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Verify owner, exact merged PR and canonical successful CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-flow.mjs guard
+      - name: Recheck public release assets against reviewed hashes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-flow.mjs verify-assets
+      - name: Publish reviewed metadata and verify latest-row readback
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/release-flow.mjs publish
+

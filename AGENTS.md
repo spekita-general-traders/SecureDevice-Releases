@@ -1,43 +1,31 @@
 # SecureDevice-Releases: maelekezo ya kazi
 
-Public APK releases na OTA/provisioning metadata. Default branch: `main`.
+Public APK releases na OTA/provisioning metadata. Default branch: `main`. Canonical release owner: **spekita**.
 
-Public release repository; internal operations stay in the private source repositories.
+Repo hii ni PUBLIC. Weka public artifact metadata pekee; usiweke customer data, internal operations register, secrets au recovery material. Hifadhi CODEOWNERS na required CI/protections.
 
-## Mipaka ya mradi
+## Kupima
 
-Release metadata workflow inaweza kuita Supabase RPC wakati configuration yake ipo; hiyo ni remote write.
+Node.js22+ na Bash/Git Bash:
+`node --test scripts/validate-manifest.test.mjs scripts/validate-release-tag.test.mjs scripts/release-flow.test.mjs`
+kisha `node scripts/release-flow.mjs validate`.
 
-Repo hii ni PUBLIC. Hifadhi public artifact metadata pekee; usiweke customer data, internal operations register, secrets au recovery material.
+Hivi ni validation vya source/metadata na mocked API boundaries; havifanyi publication au network kwenye test cases. APK bytes/signing identity na actual Android versionCode bado vihakiwe kutoka trusted release/build evidence kabla ya publication. Hakuna dev server au APK build source hapa.
 
-## Kuanzisha na kupima
+## Release workflow
 
-GitHub Actions/bash, gh, jq, curl, sha256sum/openssl; hakuna app build source hapa.
+`update-latest-json.yml` ni manual-main preparation ya owner spekita: explicit existing SecureDevice release tag + actual versionCode → public asset verification → metadata branch/PR. Haina Supabase credentials/writes wala direct main push.
 
-Hakuna dev server. Chunguza metadata na release assets kama data za release.
+`publish-reviewed-metadata.yml` ni manual-main publication tofauti baada ya metadata-only PR ku-merge na spekita na required CI kupita. Inahitaji exact PR/head/merge/tag/hash attestation, current canonical source na asset recheck. Final step pekee hupokea server secret, huita Supabase RPC na kuhakiki latest-row readback. Hii ni production write; usiendeshe kama test.
 
-Read-only validation: `node --test scripts/validate-manifest.test.mjs scripts/validate-release-tag.test.mjs` (Node.js22+ na Bash/Git Bash), kupitia `manifest-validation.yml` kwa PR/main push. Hupima checked-in JSON/package/channel/URL, SHA256↔provisioning checksum na isolated unsafe-tag rejection, bila network/secrets/publish. Actual artifact bytes na signing certificate bado vihakiwe kabla ya publication; usiunde release kama test.
+Soma [README.md](README.md) kwa actual token/create-PR setting, workflow-run approval, Production environment na server-secret requirements. Hakuna automatic reviewer approval, bypass, forced push, credentials provisioning au key rotation iliyotolewa na source hii.
 
-## Release na deployment
+## Namna ya kufanya kazi
 
-`update-latest-json.yml` hujibu release events/manual dispatch; inaweza kusasisha Supabase metadata na kusukuma latest.json main. Release event si kitendo kisicho na madhara.
-
-Fuata scope iliyoidhinishwa na gates halisi za workflow. Mabadiliko ya maelekezo hayatoi ruhusa mpya ya production, publication au enrollment. Ruhusa iliyokwisha kutolewa kwenye task isirudiwe kuombwa bila sababu mpya.
-
-## Jinsi ya kufanya kazi
-
-- Wasiliana kwa Kiswahili kilicho wazi, isipokuwa mtumiaji aombe lugha nyingine. Fanya hatua za kompyuta zinazohitajika ndani ya scope iliyoidhinishwa; usiulize ruhusa tena kwa edits, ukaguzi au vipimo vya kawaida vinavyoweza kurudishwa.
-- Kabla ya edits, hakiki repository, branch, git status na target environment. Hifadhi mabadiliko yaliyopo; usifute checkout ya zamani au kutumia reset/clean ili kuficha kazi ambayo haijacommitiwa. Tumia worktree tofauti kwa kazi sambamba.
-- Tumia default branch halisi ya repo; usibadili jina lake kwa mazoea. Hifadhi CODEOWNERS, required checks na gates za deployment zilizopo. Usiswitch GitHub accounts ili kukwepa review.
-- Tumia config ya development/staging iliyothibitishwa kwa runtime tests. Git branch/worktree haitenganishi database au remote API. Placeholder keys za CI ni za compilation tu.
-- Secrets, signing material na data binafsi visiwekwe Git, logs au documentation. Thibitisha connection/account/project kwa read-only metadata kabla ya remote actions; usisome secrets ili tu kutambua account.
-- Mwisho wa kazi eleza mabadiliko, vipimo vilivyofanyika, commit/PR na yaliyobaki. Build iliyofaulu si uthibitisho wa live deployment au business flow iliyofaulu.
-- AGENTS.md ni mwongozo wa kazi; GitHub protections, database policies na ruhusa za zana ndizo zinazotekeleza mipaka ya access.
-
-## Ushahidi wa commands
-
-Commands zimetokana na source ya 79ba2f8ea34e (main), iliyokaguliwa 12 Septemba 2026. Soma definitions za sasa ikiwa scripts/workflows zimebadilika:
-
-- [README.md](https://github.com/spekita-general-traders/SecureDevice-Releases/blob/79ba2f8ea34e47504e3e52f253b948af95d15690/README.md)
-- [.github/workflows/update-latest-json.yml](https://github.com/spekita-general-traders/SecureDevice-Releases/blob/79ba2f8ea34e47504e3e52f253b948af95d15690/.github/workflows/update-latest-json.yml)
+- Wasiliana kwa Kiswahili rahisi isipokuwa iombwe lugha nyingine. Kamilisha kazi iliyoidhinishwa bila kuuliza confirmations za kurudia.
+- Kabla ya edits, hakiki repo/branch/status; hifadhi changes zilizopo. Usifanye reset/clean kuficha kazi.
+- Tumia actual owner identity `spekita` kwa release. Usiswitch accounts ili kuonyesha independent review ya mtu yuleyule.
+- Git branch haibadili backend target. Tumia synthetic/mocked boundaries kwa tests; usitumie production publication kama validation.
+- Usiprint secrets, raw provider responses au private payloads. Missing permissions/auth zielezwe kama gaps halisi; usizibypass.
+- Mwisho rekodi changed files, tests, exact commit/PR na remaining gates. CI PASS si production publication proof.
 

@@ -43,12 +43,14 @@ for (const [label, value] of [
 test('reject missing and extra arguments', () => {
   for (const args of [[], ['v1.0', 'extra']]) assert.equal(check(...args).status, 1);
 });
-test('publisher receives event tag only through env and validates before URL construction', () => {
+test('manual preparer receives tag through env and JavaScript validates before release lookup', () => {
   const workflow = fs.readFileSync(new URL('../.github/workflows/update-latest-json.yml', import.meta.url), 'utf8');
-  const eventLines = workflow.split(/\r?\n/).filter(line => line.includes('github.event.release.tag_name'));
-  assert.equal(eventLines.length, 1);
-  assert.match(eventLines[0], /^\s+RELEASE_TAG: \$\{\{ github\.event\.release\.tag_name \}\}$/);
-  const guard = workflow.indexOf('bash scripts/validate-release-tag.sh "$TAG_NAME"');
-  assert.ok(guard > workflow.indexOf('TAG_NAME="${RELEASE_TAG:-}"'));
-  assert.ok(guard < workflow.indexOf('APK_URL='));
+  const inputLines = workflow.split(/\r?\n/).filter(line => line.includes('inputs.release_tag'));
+  assert.equal(inputLines.length, 1);
+  assert.match(inputLines[0], /^\s+RELEASE_TAG: \$\{\{ inputs\.release_tag \}\}$/);
+  assert.match(workflow, /run: node scripts\/release-flow\.mjs prepare/);
+  const source = fs.readFileSync(new URL('./release-flow.mjs', import.meta.url), 'utf8');
+  const guard = source.indexOf('const tag = validateTag(env.RELEASE_TAG);');
+  assert.ok(guard > 0);
+  assert.ok(guard < source.indexOf("const release = await github('/releases/tags/' + tag);", guard));
 });
