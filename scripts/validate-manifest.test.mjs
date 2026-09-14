@@ -10,7 +10,13 @@ for (const [name, mutate] of [
   ['download moved to another repository', m => { m.apkUrl = m.apkUrl.replace('/SecureDevice-Releases/','/Other/'); }],
   ['credential-bearing URL', m => { m.apkUrl = m.apkUrl.replace('https://','https://synthetic@'); }],
   ['query injected into artifact URL', m => { m.apkUrl += '?redirect=elsewhere'; }],
-  ['URL points to another release', m => { m.apkUrl = m.apkUrl.replace(`/v${m.versionName}/`, `/v${m.versionName}-different/`); }],
+  ['URL points to another release', m => {
+    const url = new URL(m.apkUrl);
+    const segments = url.pathname.split('/');
+    segments[segments.length - 2] += '-different';
+    url.pathname = segments.join('/');
+    m.apkUrl = url.href;
+  }],
   ['different package', m => { m.appId = 'com.other.app'; }],
   ['different channel', m => { m.channel = 'beta'; }],
   ['checksum copied from different APK', m => { m.sha256 = '0'.repeat(64); }],
