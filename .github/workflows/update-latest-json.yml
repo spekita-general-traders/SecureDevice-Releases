@@ -24,13 +24,15 @@ jobs:
       - name: Download APK and update json
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
 
-          TAG_NAME="${{ github.event.release.tag_name }}"
+          TAG_NAME="${RELEASE_TAG:-}"
           if [ -z "$TAG_NAME" ]; then
-            TAG_NAME=$(gh release view --repo spekita-general-traders/SecureDevice-Releases --json tagName --jq .tagName)
+            TAG_NAME="$(gh release view --repo spekita-general-traders/SecureDevice-Releases --json tagName --jq .tagName)"
           fi
+          bash scripts/validate-release-tag.sh "$TAG_NAME"
 
           APK_NAME="app-release.apk"
           METADATA_NAME="provisioning-metadata.json"

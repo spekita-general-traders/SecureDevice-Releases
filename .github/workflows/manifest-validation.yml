@@ -19,4 +19,4 @@ jobs:
         with:
           node-version: '22'
       - name: Validate checked-in manifest and corrupt-fixture rejection
-        run: node --test scripts/validate-manifest.test.mjs
+        run: node --test scripts/validate-manifest.test.mjs scripts/validate-release-tag.test.mjs
