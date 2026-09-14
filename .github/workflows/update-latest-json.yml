@@ -1,130 +1,40 @@
-name: Update latest json checksum
-
+name: Prepare SecureDevice metadata PR
 on:
-  release:
-    types:
-      - published
-      - edited
-      - prereleased
-      - released
   workflow_dispatch:
-
+    inputs:
+      release_tag:
+        description: Existing published SecureDevice tag (for example v1.0.19)
+        required: true
+        type: string
+      version_code:
+        description: Actual Android versionCode verified from this APK
+        required: true
+        type: string
 permissions:
-  contents: write
-
+  contents: read
+concurrency:
+  group: securedevice-metadata-preparation
+  cancel-in-progress: false
 jobs:
-  update-latest:
+  prepare:
+    if: github.repository == 'spekita-general-traders/SecureDevice-Releases' && github.ref == 'refs/heads/main' && github.actor == 'spekita' && github.triggering_actor == 'spekita'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
-          ref: main
-
-      - name: Download APK and update json
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Prepare branch and PR only
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          TAG_NAME="${{ github.event.release.tag_name }}"
-          if [ -z "$TAG_NAME" ]; then
-            TAG_NAME=$(gh release view --repo spekita-general-traders/SecureDevice-Releases --json tagName --jq .tagName)
-          fi
-
-          APK_NAME="app-release.apk"
-          METADATA_NAME="provisioning-metadata.json"
-          APK_URL="https://github.com/spekita-general-traders/SecureDevice-Releases/releases/download/${TAG_NAME}/${APK_NAME}"
-          METADATA_URL="https://github.com/spekita-general-traders/SecureDevice-Releases/releases/download/${TAG_NAME}/${METADATA_NAME}"
-
-          curl -fL "$APK_URL" -o "$APK_NAME"
-          test -s "$APK_NAME"
-          curl -fL "$METADATA_URL" -o "$METADATA_NAME"
-          test -s "$METADATA_NAME"
-
-          SHA256=$(sha256sum "$APK_NAME" | awk '{print $1}')
-          QR_CHECKSUM=$(printf "%s" "$SHA256" | xxd -r -p | openssl base64 -A | tr '+/' '-_' | tr -d '=')
-          SIGNATURE_CHECKSUM=$(jq -r '.signature_checksum_b64 // ""' "$METADATA_NAME")
-          COMPONENT_NAME=$(jq -r '.component_name // "com.spekita.spekitasecure/.MyDeviceAdminReceiver"' "$METADATA_NAME")
-          PACKAGE_NAME=$(jq -r '.package_name // "com.spekita.spekitasecure"' "$METADATA_NAME")
-          CERT_SHA256=$(jq -r '.certificate_sha256_hex // ""' "$METADATA_NAME")
-          VERSION_NAME="${TAG_NAME#v}"
-          RELEASED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          jq \
-            --arg apkUrl "$APK_URL" \
-            --arg sha "$SHA256" \
-            --arg checksum "$QR_CHECKSUM" \
-            '.versionName=($apkUrl | split("/releases/download/")[1] | split("/")[0] | ltrimstr("v")) | .apkUrl=$apkUrl | .sha256=$sha | .provisioningChecksumBase64=$checksum' \
-            latest.json > latest.tmp.json
-          mv latest.tmp.json latest.json
-
-          echo "TAG_NAME=$TAG_NAME" >> "$GITHUB_ENV"
-          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
-          echo "APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
-          echo "APK_URL=$APK_URL" >> "$GITHUB_ENV"
-          echo "SHA256=$SHA256" >> "$GITHUB_ENV"
-          echo "QR_CHECKSUM=$QR_CHECKSUM" >> "$GITHUB_ENV"
-          echo "SIGNATURE_CHECKSUM=$SIGNATURE_CHECKSUM" >> "$GITHUB_ENV"
-          echo "COMPONENT_NAME=$COMPONENT_NAME" >> "$GITHUB_ENV"
-          echo "PACKAGE_NAME=$PACKAGE_NAME" >> "$GITHUB_ENV"
-          echo "CERT_SHA256=$CERT_SHA256" >> "$GITHUB_ENV"
-          echo "RELEASED_AT=$RELEASED_AT" >> "$GITHUB_ENV"
-
-      - name: Publish latest metadata to Supabase
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
-            echo "Supabase secrets are missing; skipping Supabase metadata publish."
-            exit 0
-          fi
-
-          BASE_URL="${SUPABASE_URL%/}"
-          RPC_URL="$BASE_URL/rest/v1/rpc/upsert_secure_app_release"
-          AUTH_ARGS=(-H "api""key: ${SUPABASE_SERVICE_ROLE_KEY}")
-          if [[ "$SUPABASE_SERVICE_ROLE_KEY" == eyJ* ]]; then
-            AUTH_ARGS+=( -H "Authori""zation: Bear""er ${SUPABASE_SERVICE_ROLE_KEY}" )
-          fi
-
-          jq -n \
-            --arg p_app_id "com.spekita.spekitasecure" \
-            --arg p_channel "stable" \
-            --arg p_tag "$TAG_NAME" \
-            --arg p_version_name "$VERSION_NAME" \
-            --arg p_release_repo "spekita-general-traders/SecureDevice-Releases" \
-            --arg p_apk_name "$APK_NAME" \
-            --arg p_apk_url "$APK_URL" \
-            --arg p_sha256 "$SHA256" \
-            --arg p_provisioning_checksum_base64 "$QR_CHECKSUM" \
-            --arg p_signature_checksum_base64 "$SIGNATURE_CHECKSUM" \
-            --arg p_component_name "$COMPONENT_NAME" \
-            --arg p_package_name "$PACKAGE_NAME" \
-            --arg p_certificate_sha256_hex "$CERT_SHA256" \
-            --arg p_released_at "$RELEASED_AT" \
-            '{p_app_id:$p_app_id, p_channel:$p_channel, p_tag:$p_tag, p_version_name:$p_version_name, p_release_repo:$p_release_repo, p_apk_name:$p_apk_name, p_apk_url:$p_apk_url, p_sha256:$p_sha256, p_provisioning_checksum_base64:$p_provisioning_checksum_base64, p_signature_checksum_base64:$p_signature_checksum_base64, p_component_name:$p_component_name, p_package_name:$p_package_name, p_certificate_sha256_hex:$p_certificate_sha256_hex, p_released_at:$p_released_at}' \
-            > supabase-rpc-payload.json
-
-          status=$(curl -sS -L -o supabase-response.json -w "%{http_code}" -X POST "$RPC_URL" \
-            "${AUTH_ARGS[@]}" \
-            -H "Content-Type: application/json" \
-            -H "Prefer: return=minimal" \
-            --data @supabase-rpc-payload.json)
-
-          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
-            echo "Supabase RPC failed. HTTP=$status"
-            cat supabase-response.json || true
-            exit 1
-          fi
-
-      - name: Commit changes
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add latest.json
-          git diff --cached --quiet && exit 0
-          git commit -m "Auto update latest json checksum"
-          git push origin HEAD:main
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          VERSION_CODE: ${{ inputs.version_code }}
+          GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: node scripts/release-flow.mjs prepare
