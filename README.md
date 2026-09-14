@@ -18,6 +18,8 @@ Run `node --test scripts/validate-manifest.test.mjs scripts/validate-release-tag
 
 This PR prepares the workflows; it does not itself prepare a release manifest or publish an APK/Supabase row. The initial source/code PR cannot satisfy the metadata-only publication gate. A subsequent release metadata PR is required. Unrelated main updates after that merge require a new validated metadata-only PR/current-main dispatch; do not relax the exact-source gate.
 
+GitHub can return an empty workflow-run PR list after merge. Only for a valid empty list, publication verifies the exact source branch and the unique closed/merged PR returned for the approved head commit, including the same head, main merge and canonical repositories. A nonempty conflicting list, missing/malformed data or an incomplete/API-failed lookup still stops publication. See the [commit association API](https://docs.github.com/en/rest/commits/commits#list-pull-requests-associated-with-a-commit).
+
 ## Permissions and configuration required before first use
 
 - Preparation uses the job's `GITHUB_TOKEN` with only `contents:write` and `pull-requests:write`; credentials are not persisted in checkout. Repository/organization policy must permit **Allow GitHub Actions to create and approve pull requests**. The workflow only creates PRs; it does not approve or merge. Read-only inspection on14September2026 found this setting disabled. No setting was changed by this implementation.

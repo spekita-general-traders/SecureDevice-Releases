@@ -16,6 +16,47 @@ const release={id:42,tag_name:'v1.0.20',draft:false,prerelease:false,published_a
 {id:101,name:'provisioning-metadata.json',size:bytes.length,digest:'sha256:'+digest(bytes),state:'uploaded',browser_download_url:'https://github.com/'+REPO+'/releases/download/v1.0.20/provisioning-metadata.json'}]};
 const {latest,record}=prepareRecords(baseline,release,APK,bytes,'20');
 const jsonBytes=x=>Buffer.from(JSON.stringify(x,null,2)+'\n');
+
+const associationPath='/commits/'+HEAD+'/pulls?per_page=100';
+test('empty post-merge CI list uses one exact head-commit PR association',async()=>{
+const f=fixture();f.objects['/actions/runs/900'].pull_requests=[];
+await publishGuard(f.env,MERGE,latest,record,f.get);
+assert.equal(f.calls.filter(p=>p===associationPath).length,1);});
+for(const[label,change]of[
+['missing association',f=>f.objects[associationPath]=[]],
+['ambiguous association',f=>f.objects[associationPath].push(f.objects[associationPath][0])],
+['truncated page',f=>f.objects[associationPath]=Array(100).fill(f.objects[associationPath][0])],
+['malformed response',f=>f.objects[associationPath]={}],
+['null response',f=>f.objects[associationPath]=null],
+['wrong run branch',f=>f.objects['/actions/runs/900'].head_branch='other'],
+['missing PR branch',f=>delete f.objects['/pulls/8'].head.ref],
+['wrong PR number',f=>f.objects[associationPath][0].number=9],
+['not closed',f=>f.objects[associationPath][0].state='open'],
+['not merged',f=>f.objects[associationPath][0].merged_at=null],
+['wrong merge',f=>f.objects[associationPath][0].merge_commit_sha=HEAD],
+['wrong source SHA',f=>f.objects[associationPath][0].head.sha=MERGE],
+['wrong source branch',f=>f.objects[associationPath][0].head.ref='other'],
+['fork source',f=>f.objects[associationPath][0].head.repo.full_name='other/repo'],
+['wrong base',f=>f.objects[associationPath][0].base.ref='other'],
+['wrong base repository',f=>f.objects[associationPath][0].base.repo.full_name='other/repo'],
+])test('empty association denies '+label,async()=>{
+const f=fixture();f.objects['/actions/runs/900'].pull_requests=[];change(f);
+await assert.rejects(publishGuard(f.env,MERGE,latest,record,f.get));});
+test('nonempty conflicting run association cannot use matching fallback',async()=>{
+const f=fixture();f.objects['/actions/runs/900'].pull_requests[0].number=9;
+await assert.rejects(publishGuard(f.env,MERGE,latest,record,f.get));
+assert.ok(!f.calls.includes(associationPath));});
+test('null or missing run association is not an empty-list fallback',async()=>{
+for(const value of[null,undefined,{}]){
+const f=fixture();f.objects['/actions/runs/900'].pull_requests=value;
+await assert.rejects(publishGuard(f.env,MERGE,latest,record,f.get));assert.ok(!f.calls.includes(associationPath));}});
+test('head-association API failure fails closed',async()=>{
+const f=fixture();f.objects['/actions/runs/900'].pull_requests=[];
+await assert.rejects(publishGuard(f.env,MERGE,latest,record,async p=>{if(p===associationPath)throw Error('API unavailable');return f.get(p);}));});
+test('response PR and run IDs must be the requested identities',async()=>{
+for(const change of[f=>f.objects['/pulls/8'].number=9,f=>f.objects['/actions/runs/900'].id=901]){
+const f=fixture();change(f);await assert.rejects(publishGuard(f.env,MERGE,latest,record,f.get));}});
+
 const checkPath='/commits/'+HEAD+'/check-runs?filter=latest&per_page=100';
 function fixture(){
 const env={GITHUB_REPOSITORY:REPO,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REF:'refs/heads/main',GITHUB_ACTOR:OWNER,
@@ -25,13 +66,14 @@ env.OWNER_ATTESTATION=attestation(env,latest,record);
 const objects={
 '':{full_name:REPO,default_branch:'main'},
 ['/collaborators/'+OWNER+'/permission']:{user:{login:OWNER},permission:'admin'},'/commits/main':{sha:MERGE},
-'/pulls/8':{state:'closed',merged:true,merged_by:{login:OWNER},base:{ref:'main',repo:{full_name:REPO}},head:{sha:HEAD,repo:{full_name:REPO}},merge_commit_sha:MERGE},
+'/pulls/8':{number:8,state:'closed',merged:true,merged_by:{login:OWNER},base:{ref:'main',repo:{full_name:REPO}},head:{sha:HEAD,ref:'release/metadata-fixture',repo:{full_name:REPO}},merge_commit_sha:MERGE},
 '/pulls/8/files?per_page=100':[{filename:'latest.json',status:'modified'},{filename:'release-metadata.json',status:'added'}],
 ['/contents/latest.json?ref='+HEAD]:{encoding:'base64',content:jsonBytes(latest).toString('base64')},
 ['/contents/release-metadata.json?ref='+HEAD]:{encoding:'base64',content:jsonBytes(record).toString('base64')},
 [checkPath]:{total_count:1,check_runs:[{id:700,name:CHECK,app:{id:15368},head_sha:HEAD,status:'completed',conclusion:'success',details_url:'https://github.com/'+REPO+'/actions/runs/900/job/700',check_suite:{id:80}}]},
-'/actions/runs/900':{id:900,event:'pull_request',path:'.github/workflows/manifest-validation.yml',head_sha:HEAD,status:'completed',conclusion:'success',
+'/actions/runs/900':{id:900,event:'pull_request',path:'.github/workflows/manifest-validation.yml',head_sha:HEAD,head_branch:'release/metadata-fixture',status:'completed',conclusion:'success',
 repository:{full_name:REPO},head_repository:{full_name:REPO},check_suite_id:80,pull_requests:[{number:8,head:{sha:HEAD},base:{ref:'main'}}]}};
+objects['/commits/'+HEAD+'/pulls?per_page=100']=[{...structuredClone(objects['/pulls/8']),merged_at:'2026-09-14T00:00:00Z'}];
 const calls=[],get=async p=>{calls.push(p);assert.ok(Object.hasOwn(objects,p),'Unexpected API '+p);return structuredClone(objects[p]);};
 return{env,objects,get,calls};}
 test('prepare preserves rollout controls and uses actual versionCode/published date',()=>{

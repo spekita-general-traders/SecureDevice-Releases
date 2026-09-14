@@ -161,7 +161,7 @@ export async function publishGuard(env, checkout, latest, record, get = github) 
   assert(env.REVIEWED_COMMIT === checkout && SHA.test(env.APPROVED_HEAD_COMMIT) &&
     /^[1-9][0-9]*$/.test(env.APPROVAL_PR ?? '') && env.OWNER_ATTESTATION === attestation(env, latest, record), 'Exact publication owner attestation required');
   const pr = await get('/pulls/' + env.APPROVAL_PR);
-  assert(pr.state === 'closed' && pr.merged === true && pr.merged_by?.login === OWNER &&
+  assert(pr.number === Number(env.APPROVAL_PR) && pr.state === 'closed' && pr.merged === true && pr.merged_by?.login === OWNER &&
     pr.base?.ref === 'main' && pr.base?.repo?.full_name === REPO && pr.head?.repo?.full_name === REPO &&
     pr.merge_commit_sha === checkout && pr.head?.sha === env.APPROVED_HEAD_COMMIT, 'Exact owner-merged canonical PR required');
   const files = await get('/pulls/' + env.APPROVAL_PR + '/files?per_page=100');
@@ -183,11 +183,25 @@ export async function publishGuard(env, checkout, latest, record, get = github) 
     /^(\d+)\/job\/\d+$/.exec(c.details_url.slice(prefix.length));
   assert(c.head_sha === env.APPROVED_HEAD_COMMIT && c.status === 'completed' && c.conclusion === 'success' && match, 'Required check failed or wrong head');
   const run = await get('/actions/runs/' + match[1]);
-  assert(run.event === 'pull_request' && run.path === '.github/workflows/manifest-validation.yml' &&
+  assert(run.id === Number(match[1]) && run.event === 'pull_request' && run.path === '.github/workflows/manifest-validation.yml' &&
     run.head_sha === env.APPROVED_HEAD_COMMIT && run.status === 'completed' && run.conclusion === 'success' &&
     run.repository?.full_name === REPO && run.head_repository?.full_name === REPO &&
-    run.check_suite_id === c.check_suite?.id && run.pull_requests?.some(p => p.number === Number(env.APPROVAL_PR) &&
-      p.head?.sha === env.APPROVED_HEAD_COMMIT && p.base?.ref === 'main'), 'CI workflow/PR association mismatch');
+    run.check_suite_id === c.check_suite?.id && Array.isArray(run.pull_requests), 'CI workflow/PR association mismatch');
+  if (run.pull_requests.length > 0) {
+    assert(run.pull_requests.some(p => p.number === pr.number && p.head?.sha === env.APPROVED_HEAD_COMMIT &&
+      p.base?.ref === 'main'), 'CI run names a different PR');
+  } else {
+    // GitHub may omit run associations after merge. Use its exact head-commit
+    // association only for an empty list; never override a conflicting list.
+    assert(typeof pr.head.ref === 'string' && pr.head.ref.length > 0 && run.head_branch === pr.head.ref,
+      'Empty CI association requires the exact source branch');
+    const associations = await get('/commits/' + env.APPROVED_HEAD_COMMIT + '/pulls?per_page=100');
+    assert(Array.isArray(associations) && associations.length < 100, 'Incomplete merged PR association inventory');
+    const matching = associations.filter(p => p.number === pr.number && p.state === 'closed' && p.merged_at &&
+      p.merge_commit_sha === checkout && p.head?.sha === env.APPROVED_HEAD_COMMIT && p.head?.ref === pr.head.ref &&
+      p.head?.repo?.full_name === REPO && p.base?.ref === 'main' && p.base?.repo?.full_name === REPO);
+    assert(matching.length === 1, 'Exact merged PR association missing or ambiguous');
+  }
   assert((await get('/commits/main')).sha === checkout, 'Main advanced during verification');
 }
 export async function verifyAssets(latest, record, get = github, download = downloadAsset) {
