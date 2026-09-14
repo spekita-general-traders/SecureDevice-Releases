@@ -16,7 +16,7 @@ GitHub Actions/bash, gh, jq, curl, sha256sum/openssl; hakuna app build source ha
 
 Hakuna dev server. Chunguza metadata na release assets kama data za release.
 
-Hakuna standalone test command katika source iliyokaguliwa. Hakiki JSON syntax, download artifact, hashes, package/certificate na consistency kabla ya publication; usiunde release kama test.
+Read-only validation: `node --test scripts/validate-manifest.test.mjs` (Node.js22+), kupitia `manifest-validation.yml` kwa PR/main push. Hupima checked-in JSON/package/channel/URL na SHA256↔provisioning checksum, bila network/secrets/publish. Actual artifact bytes na signing certificate bado vihakiwe kabla ya publication; usiunde release kama test.
 
 ## Release na deployment
 
