@@ -3,13 +3,16 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 // Source contract: latest.json and update-latest-json.yml publish this package,
-// stable channel, app-release.apk URL and unpadded base64url SHA-256 checksum.
+// stable channel, canonical app-release.apk URL and its SHA-256 digest.
 // This validator never downloads artifacts or calls the publisher/Supabase.
 export function validateManifest(manifest) {
   const requireThat = (condition, message) => { if (!condition) throw new Error(message); };
   requireThat(manifest !== null && typeof manifest === 'object' && !Array.isArray(manifest), 'Manifest must be an object');
-  for (const key of ['appId','channel','versionName','apkUrl','sha256','provisioningChecksumBase64','releasedAt','notes']) {
+  for (const key of ['appId','channel','versionName','apkUrl','sha256','releasedAt','notes']) {
     requireThat(typeof manifest[key] === 'string', `Missing or invalid string: ${key}`);
+  }
+  for (const key of ['provisioningChecksumBase64','provisioning_checksum_base64']) {
+    requireThat(!Object.hasOwn(manifest, key), `Retired Device Owner QR field is not allowed: ${key}`);
   }
   requireThat(manifest.appId === 'com.spekita.spekitasecure', 'Unexpected package');
   requireThat(manifest.channel === 'stable', 'Unexpected published channel');
@@ -28,8 +31,6 @@ export function validateManifest(manifest) {
   // The publisher strips an optional leading v from the actual release tag.
   requireThat(parts[0].replace(/^v/, '') === manifest.versionName, 'Release URL tag and versionName disagree');
   requireThat(/^[A-Fa-f0-9]{64}$/.test(manifest.sha256), 'Invalid SHA-256');
-  requireThat(/^[A-Za-z0-9_-]{43}$/.test(manifest.provisioningChecksumBase64), 'Invalid unpadded base64url provisioning checksum');
-  requireThat(Buffer.from(manifest.sha256, 'hex').toString('base64url') === manifest.provisioningChecksumBase64, 'Provisioning checksum does not encode the APK SHA-256');
   requireThat(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(manifest.releasedAt) &&
     Number.isFinite(Date.parse(manifest.releasedAt)) && new Date(manifest.releasedAt).toISOString().replace('.000Z','Z') === manifest.releasedAt,
     'releasedAt must be a valid UTC release timestamp');

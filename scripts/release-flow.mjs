@@ -71,8 +71,10 @@ export function prepareRecords(current, release, apkHash, metadataBytes, version
   if (raw.version_code != null) assert(Number(raw.version_code) === Number(versionCode), 'Metadata/versionCode mismatch');
   const provisioning = validateProvisioning(raw);
   const latest = { ...current, versionName: tag.replace(/^v/, ''), versionCode: Number(versionCode),
-    apkUrl: assets.apk.url, sha256: apkHash, provisioningChecksumBase64: Buffer.from(apkHash, 'hex').toString('base64url'),
+    apkUrl: assets.apk.url, sha256: apkHash,
     releasedAt: new Date(release.published_at).toISOString().replace('.000Z', 'Z') };
+  delete latest.provisioningChecksumBase64;
+  delete latest.provisioning_checksum_base64;
   validateManifest(latest);
   const record = { schema_version: 1, release_id: release.id, tag, published_at: latest.releasedAt,
     assets, apk_sha256: apkHash, provisioning_asset_sha256: metadataHash, provisioning };
@@ -99,7 +101,6 @@ export function payload(latest, record) {
   validateRecords(latest, record);
   return { p_app_id: latest.appId, p_channel: latest.channel, p_tag: record.tag, p_version_name: latest.versionName,
     p_release_repo: REPO, p_apk_name: 'app-release.apk', p_apk_url: latest.apkUrl, p_sha256: latest.sha256,
-    p_provisioning_checksum_base64: latest.provisioningChecksumBase64,
     p_signature_checksum_base64: record.provisioning.signature_checksum_b64,
     p_component_name: record.provisioning.component_name, p_package_name: record.provisioning.package_name,
     p_certificate_sha256_hex: record.provisioning.certificate_sha256_hex, p_released_at: latest.releasedAt };
@@ -233,7 +234,7 @@ export async function publishSupabase(latest, record, origin, key, fetchImpl = f
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30000), headers, body: JSON.stringify(body) });
   assert(response.ok, 'Supabase publication failed HTTP ' + response.status);
   await response.body?.cancel();
-  const select = 'app_id,channel,tag,version_name,release_repo,apk_name,apk_url,sha256,provisioning_checksum_base64,signature_checksum_base64,component_name,package_name,certificate_sha256_hex,released_at,is_latest,is_active';
+  const select = 'app_id,channel,tag,version_name,release_repo,apk_name,apk_url,sha256,signature_checksum_base64,component_name,package_name,certificate_sha256_hex,released_at,is_latest,is_active';
   const url = origin + '/rest/v1/secure_app_releases?app_id=eq.' + latest.appId + '&channel=eq.stable&is_latest=eq.true&is_active=eq.true&select=' + select;
   const readback = await fetchImpl(url, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(30000), headers });
   assert(readback.ok, 'Publication sent but readback failed; inspect state before retry');

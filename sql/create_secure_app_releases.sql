@@ -8,7 +8,6 @@ create table if not exists public.secure_app_releases (
   apk_name text not null default 'app-release.apk',
   apk_url text not null,
   sha256 text not null,
-  provisioning_checksum_base64 text not null,
   signature_checksum_base64 text,
   component_name text not null default 'com.spekita.spekitasecure/.MyDeviceAdminReceiver',
   package_name text not null default 'com.spekita.spekitasecure',

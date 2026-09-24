@@ -80,6 +80,11 @@ test('prepare preserves rollout controls and uses actual versionCode/published d
 assert.equal(latest.versionCode,20);assert.equal(latest.versionName,'1.0.20');assert.equal(latest.releasedAt,release.published_at);
 assert.equal(latest.forceUpdate,baseline.forceUpdate);assert.equal(latest.rolloutPercent,baseline.rolloutPercent);
 assert.equal(validateRecords(latest,record),true);assert.equal(payload(latest,record).p_certificate_sha256_hex,CERT);});
+test('Device Owner QR metadata is absent from manifest and publication payload',()=>{
+assert.equal(Object.hasOwn(latest,'provisioningChecksumBase64'),false);
+assert.equal(Object.hasOwn(latest,'provisioning_checksum_base64'),false);
+assert.equal(Object.hasOwn(payload(latest,record),'p_provisioning_checksum_base64'),false);
+});
 test('only public allowlisted provisioning fields are copied',()=>{
 const raw=Buffer.from(JSON.stringify({...provisioning,extra:'DO_NOT_COPY'})),r=structuredClone(release);
 r.assets[1].size=raw.length;r.assets[1].digest='sha256:'+digest(raw);
